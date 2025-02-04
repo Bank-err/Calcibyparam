@@ -1,75 +1,104 @@
 import streamlit as st
 
-# Function to calculate tax under the new regime
-def calculate_new_tax(income):
-    slabs = [(400000, 0.05), (400000, 0.1), (400000, 0.15), (400000, 0.2), (400000, 0.25), (float('inf'), 0.3)]
-    tax_free_limit = 1275000  # ₹12.75 lakh including standard deduction
-    tax = 0
-    taxable_income = max(0, income - tax_free_limit)
+# Title and Description
+st.title("Bank-err's Income Tax Calculator for FY 2025-26")
+st.subheader("Compare tax under both New & Old Regimes")
 
-    if income <= tax_free_limit:
-        return 0, 0, 0  # No tax below threshold
+# Sidebar
+st.sidebar.title("Instructions")
+st.sidebar.write("1. Enter your annual taxable income before deductions.")
+st.sidebar.write("2. Select the tax regime (New or Old).")
+st.sidebar.write("3. View tax liability with detailed breakup.")
 
-    # Apply slab-wise tax
-    for limit, rate in slabs:
-        if taxable_income > 0:
-            tax_on_slab = min(taxable_income, limit) * rate
-            tax += tax_on_slab
-            taxable_income -= limit
+# User Input: Annual Income
+income = st.number_input("Enter Your Annual Income (₹)", min_value=0, step=1000, format="%d")
 
-    # Marginal relief adjustment
-    excess_income = income - 1275000
-    if tax > excess_income:
-        tax = excess_income  # Apply marginal relief
+# Constants
+STANDARD_DEDUCTION = 75000
+TAX_FREE_LIMIT_NEW = 1275000  # ₹12L + ₹75K Standard Deduction
+CESS_RATE = 0.04  # 4% Cess
 
-    cess = 0.04 * tax  # Cess @4%
-    total_tax = tax + cess
-    return tax, cess, total_tax
+# New Regime Slabs
+TAX_SLABS_NEW = [
+    (400000, 0.05),  # ₹4L - ₹8L → 5%
+    (400000, 0.10),  # ₹8L - ₹12L → 10%
+    (400000, 0.15),  # ₹12L - ₹16L → 15%
+    (400000, 0.20),  # ₹16L - ₹20L → 20%
+    (400000, 0.25),  # ₹20L - ₹24L → 25%
+    (float('inf'), 0.30)  # Above ₹24L → 30%
+]
 
-# Function to calculate tax under old regime (basic example, should be expanded with deductions)
-def calculate_old_tax(income):
-    old_slabs = [(250000, 0.05), (250000, 0.1), (500000, 0.2), (float('inf'), 0.3)]
-    standard_deduction = 50000
-    taxable_income = max(0, income - standard_deduction - 500000)  # Assumed basic exemptions
-    tax = 0
+# Old Regime Slabs (For reference; update as needed)
+TAX_SLABS_OLD = [
+    (250000, 0.05),  # ₹2.5L - ₹5L → 5%
+    (250000, 0.10),  # ₹5L - ₹7.5L → 10%
+    (250000, 0.15),  # ₹7.5L - ₹10L → 15%
+    (250000, 0.20),  # ₹10L - ₹12.5L → 20%
+    (250000, 0.25),  # ₹12.5L - ₹15L → 25%
+    (float('inf'), 0.30)  # Above ₹15L → 30%
+]
 
-    for limit, rate in old_slabs:
-        if taxable_income > 0:
-            tax += min(taxable_income, limit) * rate
-            taxable_income -= limit
+# Function to calculate tax
+def calculate_tax(income, tax_slabs, tax_free_limit):
+    taxable_income = max(0, income - STANDARD_DEDUCTION)
+    tax_breakup = []
+    total_tax = 0
 
-    cess = 0.04 * tax
-    total_tax = tax + cess
-    return tax, cess, total_tax
+    if taxable_income <= tax_free_limit:
+        return 0, []  # No tax if within free limit
 
-# Streamlit UI
-st.title("💰 Bank-err's Income Tax Calculator for FY 2025-26")
-st.markdown("**As per new tax regime**  \n**Marginal income relief applied**", unsafe_allow_html=True)
+    remaining_income = taxable_income - tax_free_limit
 
-# Create tabs
+    for slab, rate in tax_slabs:
+        if remaining_income > 0:
+            taxable_at_this_rate = min(remaining_income, slab)
+            tax_amount = taxable_at_this_rate * rate
+            tax_breakup.append((taxable_at_this_rate, rate * 100, tax_amount))
+            total_tax += tax_amount
+            remaining_income -= taxable_at_this_rate
+
+    return total_tax, tax_breakup
+
+# Tabs for New & Old Tax Regime
 tab1, tab2 = st.tabs(["New Tax Regime", "Old Tax Regime"])
 
 with tab1:
-    st.subheader("New Tax Regime Calculator")
-    income = st.number_input("Enter Your Annual Income (₹)", min_value=0, step=1000, format="%d", key="new_income")
+    st.header("New Tax Regime Calculation")
+    tax_new, breakup_new = calculate_tax(income, TAX_SLABS_NEW, TAX_FREE_LIMIT_NEW)
+    
+    # Marginal Relief Calculation
+    if TAX_FREE_LIMIT_NEW < income <= TAX_FREE_LIMIT_NEW + tax_new:
+        tax_new = income - TAX_FREE_LIMIT_NEW  # Marginal Relief Adjustment
 
-    if st.button("Calculate Tax", key="new_calc"):
-        tax, cess, total = calculate_new_tax(income)
-        st.write(f"**Total Tax Payable:** ₹{total:,.2f}")
-        if st.checkbox("Show Tax & Cess Breakdown", key="new_breakup"):
-            st.write(f"- **Income Tax:** ₹{tax:,.2f}")
-            st.write(f"- **Cess (4%):** ₹{cess:,.2f}")
+    cess_new = tax_new * CESS_RATE
+    total_tax_new = tax_new + cess_new
+
+    # Display Results
+    st.write(f"**Total Tax (Before Cess):** ₹{tax_new:,.2f}")
+    st.write(f"**Cess (4%):** ₹{cess_new:,.2f}")
+    st.write(f"**Total Tax Payable:** ₹{total_tax_new:,.2f}")
+
+    # Tax Breakdown
+    st.subheader("Tax Breakdown (New Regime)")
+    for slab, rate, tax in breakup_new:
+        st.write(f"**₹{slab:,.0f}** taxed at **{rate}%** = ₹{tax:,.2f}")
 
 with tab2:
-    st.subheader("Old Tax Regime Calculator")
-    income_old = st.number_input("Enter Your Annual Income (₹)", min_value=0, step=1000, format="%d", key="old_income")
+    st.header("Old Tax Regime Calculation")
+    tax_old, breakup_old = calculate_tax(income, TAX_SLABS_OLD, 250000)  # ₹2.5L basic exemption limit
+    
+    cess_old = tax_old * CESS_RATE
+    total_tax_old = tax_old + cess_old
 
-    if st.button("Calculate Tax", key="old_calc"):
-        tax_old, cess_old, total_old = calculate_old_tax(income_old)
-        st.write(f"**Total Tax Payable:** ₹{total_old:,.2f}")
-        if st.checkbox("Show Tax & Cess Breakdown", key="old_breakup"):
-            st.write(f"- **Income Tax:** ₹{tax_old:,.2f}")
-            st.write(f"- **Cess (4%):** ₹{cess_old:,.2f}")
+    # Display Results
+    st.write(f"**Total Tax (Before Cess):** ₹{tax_old:,.2f}")
+    st.write(f"**Cess (4%):** ₹{cess_old:,.2f}")
+    st.write(f"**Total Tax Payable:** ₹{total_tax_old:,.2f}")
 
-# Footer with name
-st.markdown('<p style="color: cyan; font-size: 16px; font-weight: bold; text-align: center;">Created by - Paramjeet Singh Gusain</p>', unsafe_allow_html=True)
+    # Tax Breakdown
+    st.subheader("Tax Breakdown (Old Regime)")
+    for slab, rate, tax in breakup_old:
+        st.write(f"**₹{slab:,.0f}** taxed at **{rate}%** = ₹{tax:,.2f}")
+
+# Footer
+st.markdown("<h5 style='color:cyan;'>Developed by Paramjeet Singh Gusain</h5>", unsafe_allow_html=True)
